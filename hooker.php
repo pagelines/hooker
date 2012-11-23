@@ -17,7 +17,7 @@ To enable PHP mode you must add this to wp-config.php:
 define( 'PL_HOOKS_PHP', true );
 
 */
-define( 'PL_HOOKS_PHP', true );
+
 class PLHooks {
 
 	function __construct() {
