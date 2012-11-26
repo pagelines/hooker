@@ -1,8 +1,8 @@
 == Description ==
 
-<h4>Easily add any code anywhere using all the built in PageLines actions using a simple gui.</h4>
+<h4>Easily add any code anywhere using all the built in hooks with a simple gui.</h4>
 
-Finally the tool you have been dreaming about!! With this plugin you can add HTML, JS even PHP if your not scared to anywhere!
+Finally the tool you have been dreaming about!! With this plugin you can add HTML, JS even PHP to anywhere!
 
 How does it work?
 Simple really, just select an hook from the dropdown.

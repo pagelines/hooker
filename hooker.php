@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Hooker
-Description: Easily add any code anywhere using all the built in hooks using a simple gui.
+Description: Easily add any code anywhere using all the built in hooks with a simple gui.
 Version: 1.0
 Author: Simon Prosser
 Demo: 
