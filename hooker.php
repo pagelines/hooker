@@ -41,7 +41,7 @@ class PLHooks {
 
 		foreach( $options as $hook => $data ) {
 
-			if( '' != $data['content'] && isset( $data['enabled'] ) && 'on' == $data['enabled'] ) {
+			if( isset( $data['content'] ) && '' != $data['content'] && isset( $data['enabled'] ) && 'on' == $data['enabled'] ) {
 
 				$page = ( isset( $data['page_id'] ) ) ? $data['page_id'] : array();
 				global $post;
@@ -65,8 +65,8 @@ class PLHooks {
 
 	function run_action( $hook_id ) {
 			
-		global $options;	
-		$hook = $options[$hook_id]['action'];
+		global $options;
+		$hook = $options[$hook_id]['hook'];
 		echo self::get_action_code( $options[$hook_id], $hook );
 	}
 
@@ -111,7 +111,7 @@ class PLHooks {
 		if( isset( $_POST['hooks-post'] ) && '' != $_POST['hook'] ) {
 			$options = get_option( 'pl_hooks_editor', array() );
 
-			if( '' == $_POST['action'] ) {
+			if( ! isset( $_POST['action'] ) || '' == $_POST['action'] ) {
 				$id = time();
 				$hook = $_POST['hook'];
 			} else {
@@ -162,6 +162,7 @@ class PLHooks {
 				'icon'		=> PL_ADMIN_ICONS.'/extend-sections.png',
 				'htabs' 	=> array(
 					'Settings'	=> array(
+					'title'		=> '',
 					'callback'	=> $this->render_admin_page()
 					),
 				),
@@ -325,7 +326,8 @@ class PLHooks {
 				echo "<input type='submit' name='hooks-delete' value='Delete Hook' class='button-primary' onClick='return ConfirmRestore();'/>";
 				pl_action_confirm( 'ConfirmRestore', "Are you sure??\n\nThis will delete this hook.\n\nDont be complaining after you have deleted it!!" );
 			}
-			echo "<input type='hidden' name='action' value='{$d['hook']}' />";
+			if ( isset( $d['hook'] ) )
+				echo "<input type='hidden' name='action' value='{$d['hook']}' />";
 		echo '</p></div></form>';
 		}
 
