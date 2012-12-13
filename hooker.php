@@ -131,7 +131,7 @@ class PLHooks {
 			else 
 				$options[$id]['php'] = false;
 
-			$options[$hook]['error'] = false;
+			$options[$id]['error'] = false;
 
 			if( isset( $_POST['priority'] ) )
 				$options[$id]['priority'] = $_POST['priority'];
