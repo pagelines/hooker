@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.0
+Version: 1.1
 Author: Simon Prosser
 Demo: 
 Author URI: http://pross.org.uk
@@ -40,7 +40,7 @@ class PLHooks {
 		$options = get_option( 'pl_hooks_editor', array() );
 
 		foreach( $options as $hook => $data ) {
-
+			$data['hook_id'] = $hook;
 			if( isset( $data['content'] ) && '' != $data['content'] && isset( $data['enabled'] ) && 'on' == $data['enabled'] ) {
 
 				$page = ( isset( $data['page_id'] ) ) ? $data['page_id'] : array();
@@ -67,6 +67,7 @@ class PLHooks {
 			
 		global $options;
 		$hook = $options[$hook_id]['hook'];
+		$options[$hook_id]['hook_id'] = $hook_id;
 		echo self::get_action_code( $options[$hook_id], $hook );
 	}
 
@@ -77,7 +78,9 @@ class PLHooks {
 
 			global $hook_name;
 			global $hook_contents;
-
+			global $hook_id;
+			$hook_id = $option['hook_id'];
+ 
 			$php = stripslashes( $option['content'] );
 
 			$hook_name = $hook;
@@ -372,7 +375,7 @@ jQuery(document).ready(function() {
 		$options = get_option( 'pl_hooks_editor', array() );
 
 		foreach( $options as $hook => $data ) {
-			if( '' != $data['content'] )
+			if( isset( $data['content']) && '' != $data['content'] )
 				echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'))\n";
 		} ?>
 });
@@ -424,6 +427,7 @@ add_action( 'template_redirect', array( 'PLHooks', 'front_end') );
 function fatal_error_handler_hooks($buffer){
 	global $hook_name;
 	global $hook_contents;
+	global $hook_id;
     $error=error_get_last();
 
     if($error['type'] == 1){
@@ -463,8 +467,8 @@ function fatal_error_handler_hooks($buffer){
                     </body></html>';
 
         $options = get_option( 'pl_hooks_editor', array() );
-        $options[$hook_name]['php'] = false;
-        $options[$hook_name]['error'] = $error['message'];
+        $options[$hook_id]['php'] = false;
+        $options[$hook_id]['error'] = $error['message'];
         update_option( 'pl_hooks_editor', $options );
 
         return $newBuffer;

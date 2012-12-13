@@ -25,6 +25,9 @@ Thats it!!
 
 == Changelog ==
 
+= 1.1 =
+* fix php notice in admin.
+
 = 1.0 =
 
 * Release.
