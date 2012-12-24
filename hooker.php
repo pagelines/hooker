@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.1
+Version: 1.2
 Author: Simon Prosser
 Demo: 
 Author URI: http://pross.org.uk
@@ -24,6 +24,8 @@ class PLHooks {
 
 		if ( ! function_exists( 'ploption' ) )
 			return;
+		if ( !current_user_can('edit_theme_options') )
+			return;
 
 		global $hooks_menu;
 		$hooks_menu = pagelines_insert_menu( PL_MAIN_DASH, 'Hook Editor', 'edit_theme_options', 'pagelines_hooks', array( &$this, 'get_admin_page') );
@@ -36,8 +38,15 @@ class PLHooks {
 	function front_end() {
 
 		global $options;
+		global $wp_admin_bar;
+		if ( current_user_can('edit_theme_options') ) {
+
+			$wp_admin_bar->add_menu( array( 'id' => 'pl_hooks', 'parent' => 'pl_settings', 'title' => __('Hooker', 'pagelines'), 'href' => admin_url( 'admin.php?page=pagelines_hooks' ) ) );
+		}
 
 		$options = get_option( 'pl_hooks_editor', array() );
+		if( ! is_array( $options ) )
+			$options = array();
 
 		foreach( $options as $hook => $data ) {
 			$data['hook_id'] = $hook;
@@ -55,7 +64,6 @@ class PLHooks {
 						if( $id == $post->ID ) {
 							add_action( $data['hook'], create_function( '$hook', "PLHooks::run_action($hook);"), $data['priority'] );
 						}
-
 				} else {
 					add_action( $data['hook'], create_function( '$hook', "PLHooks::run_action($hook);"), $data['priority'] );
 				}	
@@ -66,6 +74,8 @@ class PLHooks {
 	function run_action( $hook_id ) {
 			
 		global $options;
+		if( ! is_array( $options ) )
+			$options = array();
 		$hook = $options[$hook_id]['hook'];
 		$options[$hook_id]['hook_id'] = $hook_id;
 		echo self::get_action_code( $options[$hook_id], $hook );
@@ -100,6 +110,31 @@ class PLHooks {
 	}
 
 	function save_settings() {
+
+		if( isset( $_POST['import-hooks'] ) ) {
+
+			$hooks = pl_file_get_contents($_FILES['file']['tmp_name']);
+			$hooks = json_decode( $hooks );
+			if ( is_object( $hooks ) ) {
+				update_option( 'pl_hooks_editor', json_decode(json_encode($hooks), true) );
+				wp_redirect( admin_url( 'admin.php?page=pagelines_hooks&imported=true' ) ); 
+			}
+		}
+
+		if( isset( $_POST['export-hooks'] ) ) {
+
+			$options = get_option( 'pl_hooks_editor', array() );
+
+			if ( isset($options) && is_array( $options) ) {
+				
+				header('Cache-Control: public, must-revalidate');
+				header('Pragma: hack');
+				header('Content-Type: text/plain');
+				header( 'Content-Disposition: attachment; filename="hookers.pimp"' );						
+				echo json_encode( $options );
+				exit();
+			} 
+		}
 
 		if( isset( $_POST['hooks-delete'] ) && '' != $_POST['hook'] ) {
 
@@ -167,9 +202,19 @@ class PLHooks {
 					'Settings'	=> array(
 					'title'		=> '',
 					'callback'	=> $this->render_admin_page()
-					),
+						)
+					)
 				),
-		));
+			'import/export'	=> array(
+				'icon'		=> PL_ADMIN_ICONS.'/extend-sections.png',
+				'htabs' 	=> array(
+					'Settings'	=> array(
+					'title'		=> '',
+					'callback'	=> $this->import_page()
+						)
+					)
+				)
+			);
 	}
 
 	function render_admin_page() {
@@ -179,6 +224,7 @@ class PLHooks {
 
 		// draw dropdown....
 		global $options;
+		$options = get_option( 'pl_hooks_editor', array() );
 		echo'<p><select id="hooks" name="hooks">';
 		echo "<option name='none' id='none' value='none'>Add a new hook...</option>";
 		echo '<option disabled="disabled">WordPress Hooks</option>';
@@ -206,9 +252,11 @@ class PLHooks {
 			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
 		}
 		echo '</select></p>';
-		foreach ( $options as $o => $hook ) {
-			if( empty( $hook['content'] ) )
-				unset( $options[$o]);
+		if( ! empty( $options ) ) {
+			foreach ( $options as $o => $hook ) {
+				if( empty( $hook['content'] ) )
+					unset( $options[$o]);
+			}
 		}
 		if( ! empty( $options ) ) {
 			echo'<p><select id="hooks_active" name="hooks_active">';
@@ -331,7 +379,7 @@ class PLHooks {
 			}
 			if ( isset( $d['hook'] ) )
 				echo "<input type='hidden' name='action' value='{$d['hook']}' />";
-		echo '</p></div></form>';
+		echo '</p></div>';
 		}
 
 			?>
@@ -358,9 +406,34 @@ class PLHooks {
 &nbsp;&nbsp;&nbsp;&nbsp;echo 'hello';<br />
 ?&gt;
 
-<?php } ?></div><?php
+<?php }
+
+echo '</div></form>';
+
 	}
 
+	function import_page() {
+
+		ob_start();
+
+		if( isset( $_GET['imported'] ) && 'true' == $_GET['imported'] )
+			echo '<div><p>Import was successfull!!</p></div>';
+
+		echo '</form><form enctype="multipart/form-data" action="" method="post">';
+
+		echo '<div><p>';
+
+				echo "<input type='submit' name='export-hooks' value='Export Hooks' class='button-primary' /> Export your hooks to a file.</form>";
+	
+				echo "<form enctype='multipart/form-data' action='' method='post'><input type='submit' name='import-hooks' value='Import Hooks' class='button-primary' onClick='return ConfirmImport();' />";
+				echo '<input type="file" class="file_uploader text_input" name="file" id="hooks-file" />';
+
+				pl_action_confirm( 'ConfirmImport', "Are you sure??\n\nThis will import hooks from a file, and overwrite any existing hooks." );
+
+		echo '</p></div></form>';
+
+		return ob_get_clean();
+	}
 
 	function head() {
 
@@ -373,10 +446,11 @@ jQuery(document).ready(function() {
 <?php
 		global $options;
 		$options = get_option( 'pl_hooks_editor', array() );
-
-		foreach( $options as $hook => $data ) {
-			if( isset( $data['content']) && '' != $data['content'] )
-				echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'))\n";
+		if( ! empty( $options ) ) {
+			foreach( $options as $hook => $data ) {
+				if( isset( $data['content']) && '' != $data['content'] )
+					echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'), cm_customcss)\n";
+			}
 		} ?>
 });
 </script>
