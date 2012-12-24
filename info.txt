@@ -13,6 +13,7 @@ Thats it!!
 
 <h4>Features</h4>
 
+* Import and export all your hooks!
 * WordPress actions.
 * Every PageLines action.
 * Dynamic actions for all your installed sections.
@@ -24,6 +25,9 @@ Thats it!!
 <em>Note: to enable PHP parsing for hooks please read the instructions in the plugin file.</em>
 
 == Changelog ==
+
+= 1.2 =
+* Add import/export functions.
 
 = 1.1 =
 * fix php notice in admin.
