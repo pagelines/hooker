@@ -26,6 +26,11 @@ Thats it!!
 
 == Changelog ==
 
+= 1.3 = 
+
+* Fix error if adminbar is disabled.
+* Add some translation support.
+
 = 1.2 =
 * Add import/export functions.
 
