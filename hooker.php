@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.3
+Version: 1.3.1
 Author: Simon Prosser
 Demo:
 Author URI: http://pross.org.uk
@@ -35,7 +35,7 @@ class PLHooks {
 		add_action( 'admin_head', array( &$this, 'head' ), 999 );
 	}
 
-	function front_end() {
+	static function front_end() {
 
 		global $options;
 		global $wp_admin_bar;
@@ -71,7 +71,7 @@ class PLHooks {
 		}
 	}
 
-	function run_action( $hook_id ) {
+	static function run_action( $hook_id ) {
 
 		global $options;
 		if( ! is_array( $options ) )
@@ -82,7 +82,7 @@ class PLHooks {
 	}
 
 
-	function get_action_code( $option, $hook ) {
+	static function get_action_code( $option, $hook ) {
 
 		if( defined( 'PL_HOOKS_PHP') && '' != $option['content'] && isset( $option['php'] ) && $option['php'] ) {
 
@@ -234,6 +234,8 @@ class PLHooks {
 		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Hooks', 'hooker' ) );
 
 		$hooks = json_decode( $this->get_pl_hooks() );
+		
+		sort( $hooks );
 
 		foreach ( $hooks as $o => $hook ) {
 
@@ -314,7 +316,8 @@ class PLHooks {
 				$sections[] = sprintf( 'pagelines_outer_%s', basename( $data['base_dir'] ) );
 			}
 		}
-	return $sections;
+		sort( $sections );
+		return $sections;
 	}
 
 	function draw_options() {
@@ -486,7 +489,7 @@ jQuery(document).ready(function() {
 
 	function wp_hooks() {
 
-		return array(
+		$hooks =  array(
 			'wp_head',
 			'wp_footer',
 			'get_search_form',
@@ -497,6 +500,8 @@ jQuery(document).ready(function() {
 			'loop_start',
 			'loop_end'
 			);
+		sort( $hooks );
+		return $hooks;
 	}
 } // end PLHooks class
 
