@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.4
+Version: 1.4.1
 Author: Simon Prosser
 Demo:
 Author URI: http://pross.org.uk
@@ -284,7 +284,7 @@ class PLHooks {
 
 		// see if we have hooks already....
 
-		$url = 'http://api.pagelines.com/dms-updates/hooks.php?api=1';
+		$url = 'http://www.pagelines.com/api/dms-updates/hooks.php?api=1';
 		if( $hooks = get_transient( 'pagelines_hooks' ) )
 			return $hooks;
 		$response = wp_remote_get( $url );
