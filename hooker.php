@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.4.1
+Version: 1.5
 Author: Simon Prosser
 Demo:
 Author URI: http://pross.org.uk
@@ -24,15 +24,320 @@ class PLHooks {
 
 		if ( ! function_exists( 'ploption' ) )
 			return;
+
 		if ( ! current_user_can( 'edit_theme_options' ) )
 			return;
 
 		global $hooks_menu;
-		$hooks_menu = pagelines_insert_menu( PL_MAIN_DASH, 'Hook Editor', 'edit_theme_options', 'pagelines_hooks', array( &$this, 'get_admin_page' ) );
+		$hooks_menu = pagelines_insert_menu( PL_MAIN_DASH, 'Hooks Editor', 'edit_theme_options', 'pagelines_hooks', array( $this, 'render_admin_page' ) );
+		$hooks_export = pagelines_insert_menu( PL_MAIN_DASH, 'Hooks Import', 'edit_theme_options', 'pagelines_hooks_export', array( $this, 'import_page' ) );
 
-		add_action( 'load-' . $hooks_menu, 'pagelines_theme_settings_scripts' );
-		add_action( 'load-' . $hooks_menu, array( &$this, 'save_settings' ) );
-		add_action( 'admin_head', array( &$this, 'head' ), 999 );
+		add_action( 'admin_init', array( $this, 'save_settings' ) );
+		add_action( "admin_enqueue_scripts", array( $this, 'css_js' ) );
+		add_action( "admin_head-$hooks_menu", array( $this, 'head' ), 999 );
+	}
+
+	function css_js() {
+		wp_enqueue_style( 'test', plugins_url( 'codemirror.css' , __FILE__ ) );
+		wp_enqueue_script( 'test', plugins_url( 'codemirror.js' , __FILE__ ));
+	}
+
+	function render_admin_page() {
+
+		ob_start();
+		$wp_hooks = $this->wp_hooks();
+
+		// draw dropdown....
+		global $options;
+		$options = get_option( 'pl_hooks_editor', array() );
+		echo'<p><select id="hooks" name="hooks">';
+		printf( "<option name='none' id='none' value='none'>%s</option>", __( 'Add a new hook...', 'hooker' ) );
+		printf( '<option disabled="disabled">%s</option>', __( 'WordPress Hooks', 'hooker' ) );
+		foreach ( $wp_hooks as $k => $hook ) {
+			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
+		}
+		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Hooks', 'hooker' ) );
+
+		$hooks = json_decode( $this->get_pl_hooks() );
+		
+		sort( $hooks );
+
+		foreach ( $hooks as $o => $hook ) {
+
+			if( ! preg_match( '#[a-z]$#', $hook ) )
+				continue;
+
+			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
+		}
+		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Sections', 'hooker' ) );
+		$sections = $this->get_section_hooks();
+		foreach ( $sections as $o => $hook ) {
+
+			if( ! preg_match( '#[a-z]$#', $hook ) )
+				continue;
+
+			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
+		}
+		echo '</select></p>';
+		if( ! empty( $options ) ) {
+			foreach ( $options as $o => $hook ) {
+				if( empty( $hook['content'] ) )
+					unset( $options[$o]);
+			}
+		}
+		if( ! empty( $options ) ) {
+			echo'<p><select id="hooks_active" name="hooks_active">';
+			printf( "<option name='none' id='none' value='none'>%s</option>", __( 'Edit hook...', 'hooker' ) );
+
+			foreach ( $options as $o => $hook ) {
+				$error = '';
+				if( isset( $hook['error'] ) && '' != $hook['error'] )
+					$error = sprintf( '[! %s !] ', __( 'Error', 'hooker' ) );
+
+				if( isset( $hook['content'] ) && '' != $hook['content'] )
+					echo "<option name='{$o}' id='hook-{$o}' value='{$o}'>{$error}{$hook['hook']}</option>";
+			}
+		echo '</select></p>';
+	}
+	$this->draw_options();
+	$out = ob_get_clean();
+	echo $out;
+	}
+		function draw_options() {
+
+			$defaults = array(
+				'content'	=> '',
+				'php'		=> false,
+				'priority'	=> '10',
+				'error'		=> false,
+				'page_id'	=> array(),
+				'enabled'	=> 'on',
+			);
+
+			global $options;
+
+			$wp_hooks = $this->wp_hooks();
+			$hooks = $this->get_pl_hooks();
+			$sections = $this->get_section_hooks();
+
+			foreach( array_merge( $wp_hooks, json_decode( $hooks ), $sections ) as $k => $hook ) {
+
+				if ( ! isset( $options[ $hook ] ) )
+					$options[ $hook ] = $defaults;
+			}
+
+			// draw option boxes....
+
+			foreach( $options as $o => $d ) {
+
+				$d = wp_parse_args( $d, $defaults );
+
+				echo '</form><form action="" method="post">';
+				echo "<div id='hook_{$o}' class='hook_hide'><textarea id='{$o}' name='content'>{$d['content']}</textarea>";
+				echo "<input type='hidden' name='hook' value='{$o}' />";
+
+				if( isset( $d['enabled'] ) && 'on' === $d['enabled'] )
+					$check = 'checked';
+				else
+					$check = 'unchecked';
+				printf( "<br /><input type='checkbox' name='enabled' %s /> %s", $check, __( 'Enable this hook.', 'hooker' ) );
+
+				if ( defined( 'PL_HOOKS_PHP' ) ) {
+
+					if( isset( $d['error'] ) && false != $d['error'] )
+						printf( "<p><span style='color:red' >%s</span><br >%s <strong>%s</strong></p>",
+						__( 'This hook generated a PHP Fatal Error the last time it was executed.', 'hooker' ),
+						__( 'The error reported was:', 'hooker' ),
+						$d['error']
+						);
+
+					if( isset( $d['php'] ) && true === $d['php'] )
+						$check = 'checked';
+					else
+						$check = 'unchecked';
+					printf( "<br /><input type='checkbox' name='php' %s /> %s.",
+						$check,
+						__( 'Enable PHP for this hook', 'hooker' )
+						);
+				}
+				printf( "<br /><input  name='priority' value='{$d['priority']}' /> %s", __( 'Priority. (default is 10)', 'hooker' ) );
+				printf( '<br /><input name="page_id" value="%s" /> %s.',
+					implode( ',', $d['page_id'] ),
+					__( 'Only show on these pages/posts (coma seperated list of IDs)', 'hooker' )
+					);
+				printf( '<p><input type="submit" name="hooks-post" value="%s" class="button-primary" />', __( 'Save Hook', 'hooker' ) );
+
+				if( '' != $d['content'] ) {
+
+					$h = str_replace( '-', '_', $d['hook'] );
+					printf( "<input type='submit' name='hooks-delete' value='%s' class='button-primary'/>", __( 'Delete Hook', 'hooker' ) );
+					//pl_action_confirm( 'ConfirmRestore', "Are you sure??\n\nThis will delete this hook.\n\nDont be complaining after you have deleted it!!" );
+				}
+				if ( isset( $d['hook'] ) )
+					echo "<input type='hidden' name='action' value='{$d['hook']}' />";
+			echo '</p></div>';
+			}
+
+				?>
+
+				<div class="hook_welcome" >
+					<h2>Hook Editor instructions</h2>
+					<p>
+						Select the action/hook you want to edit from the dropdown above.<br />
+						Add your HTML/JS/CSS to the textarea.<br />
+						Change the priority of the hook.<br />
+						Click save.<br />
+						Thats it!!<br />
+					</p>
+
+	<?php if( defined( 'PL_HOOKS_PHP' ) && PL_HOOKS_PHP ) {
+
+		?>
+		<h3>Additional instructions for PHP users.</h3>
+		<p>
+			You will have an extra checkbox to enable PHP execution for the hook.<br />
+			<strong>IMPORTANT</strong> Make sure your PHP code is properly surrounded by tags.<br />
+			It MUST start and end with PHP tags or errors will occur. Heres an example:<br />
+	&lt;?php<br />
+	&nbsp;&nbsp;&nbsp;&nbsp;echo 'hello';<br />
+	?&gt;
+
+	<?php }
+
+	echo '</div></form>';
+
+		}
+
+		function import_page() {
+
+			if( isset( $_GET['imported'] ) && 'true' == $_GET['imported'] )
+				echo '<div><p>Import was successfull!!</p></div>';
+
+			echo '<form action="#" method="POST">';
+
+			echo '<div><p>';
+
+					printf( "<input type='submit' name='export-hooks' value='Export Hooks' class='button-primary' /> %s.", __( 'Export your hooks to a file', 'hooker' ) );
+
+					echo "</form><form enctype='multipart/form-data' action='' method='post'><input type='submit' name='import-hooks' value='Import Hooks' class='button-primary' />";
+					echo '<input type="file" class="file_uploader text_input" name="file" id="hooks-file" />';
+
+			//		pl_action_confirm( 'ConfirmImport', "Are you sure??\n\nThis will import hooks from a file, and overwrite any existing hooks." );
+
+			echo '</p></div></form>';
+		}
+
+		function head() {
+
+			// JS
+			$page = get_current_screen();
+
+			if ( 'pagelines_page_pagelines_hooks' == $page->id ) :
+				global $options;
+				$options = get_option( 'pl_hooks_editor', array() );
+	?>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+	<?php
+			if( ! empty( $options ) ) {
+				foreach( $options as $hook => $data ) {
+					if( isset( $data['content']) && '' != $data['content'] )
+						echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'), {mode: 'text/html'})\n";
+				}
+			} ?>
+	});
+	</script>
+	<script type="text/javascript">
+		jQuery(document).ready(function() {
+			jQuery('.hook_welcome').show()
+			jQuery('.hook_hide').hide()
+			jQuery('#hooks').change(function() {
+				jQuery('.hook_hide').hide()
+				jQuery('.hook_welcome').hide()
+				jQuery('#hook_' + jQuery(this).val()).show()
+			});
+			jQuery('#hooks_active').change(function() {
+				jQuery('.hook_hide').hide()
+				jQuery('.hook_welcome').hide()
+				jQuery('#hook_' + jQuery(this).val()).show()
+			});
+		});
+	</script>
+	<?php
+		endif;
+		}
+	function save_settings() {
+
+		if( isset( $_POST['import-hooks'] ) ) {
+
+			$hooks = pl_file_get_contents( $_FILES['file']['tmp_name'] );
+			$hooks = json_decode( $hooks );
+			if ( is_object( $hooks ) ) {
+				update_option( 'pl_hooks_editor', json_decode( json_encode( $hooks ), true ) );
+				wp_redirect( admin_url( 'admin.php?page=pagelines_hooks_export&imported=true' ) );
+			}
+		}
+
+		if( isset( $_POST['export-hooks'] ) ) {
+
+			$options = get_option( 'pl_hooks_editor', array() );
+
+			if ( isset($options) && is_array( $options) ) {
+
+				header( 'Cache-Control: public, must-revalidate' );
+				header( 'Pragma: hack' );
+				header( 'Content-Type: text/plain' );
+				header( 'Content-Disposition: attachment; filename="hookers.pimp"' );
+				echo json_encode( $options );
+				exit();
+			}
+		}
+
+		if( isset( $_POST['hooks-delete'] ) && '' != $_POST['hook'] ) {
+
+			$options = get_option( 'pl_hooks_editor', array() );
+			$hook = $_POST['hook'];
+			if ( isset( $options[$hook] ) )
+				unset( $options[$hook] );
+			update_option( 'pl_hooks_editor', $options );
+		return;
+		}
+
+		if( isset( $_POST['hooks-post'] ) && '' != $_POST['hook'] ) {
+
+			$options = get_option( 'pl_hooks_editor', array() );
+
+			if( ! isset( $_POST['action'] ) || '' == $_POST['action'] ) {
+				$id = time();
+				$hook = $_POST['hook'];
+			} else {
+				$id = $_POST['hook'];
+				$hook = $_POST['action'];
+			}
+
+
+			$options[$id]['hook'] = $hook;
+			$options[$id]['content'] = stripslashes( $_POST['content'] );
+
+			if( isset( $_POST['php'] ) )
+				$options[$id]['php'] = true;
+			else
+				$options[$id]['php'] = false;
+
+			$options[$id]['error'] = false;
+
+			if( isset( $_POST['priority'] ) )
+				$options[$id]['priority'] = $_POST['priority'];
+
+			if( isset( $_POST['enabled'] ) )
+				$options[$id]['enabled'] = $_POST['enabled'];
+			else
+				$options[$id]['enabled'] = 'off';
+
+			if( isset( $_POST['page_id'] ) )
+				$options[$id]['page_id'] = explode( ',', $_POST['page_id'] );
+		update_option( 'pl_hooks_editor', $options );
+		}
 	}
 
 	static function front_end() {
@@ -109,175 +414,9 @@ class PLHooks {
 	return stripslashes( do_shortcode( $option['content'] ) );
 	}
 
-	function save_settings() {
-
-		if( isset( $_POST['import-hooks'] ) ) {
-
-			$hooks = pl_file_get_contents( $_FILES['file']['tmp_name'] );
-			$hooks = json_decode( $hooks );
-			if ( is_object( $hooks ) ) {
-				update_option( 'pl_hooks_editor', json_decode( json_encode( $hooks ), true ) );
-				wp_redirect( admin_url( 'admin.php?page=pagelines_hooks&imported=true' ) );
-			}
-		}
-
-		if( isset( $_POST['export-hooks'] ) ) {
-
-			$options = get_option( 'pl_hooks_editor', array() );
-
-			if ( isset($options) && is_array( $options) ) {
-
-				header( 'Cache-Control: public, must-revalidate' );
-				header( 'Pragma: hack' );
-				header( 'Content-Type: text/plain' );
-				header( 'Content-Disposition: attachment; filename="hookers.pimp"' );
-				echo json_encode( $options );
-				exit();
-			}
-		}
-
-		if( isset( $_POST['hooks-delete'] ) && '' != $_POST['hook'] ) {
-
-			$options = get_option( 'pl_hooks_editor', array() );
-			$hook = $_POST['hook'];
-			if ( isset( $options[$hook] ) )
-				unset( $options[$hook] );
-			update_option( 'pl_hooks_editor', $options );
-		return;
-		}
-
-		if( isset( $_POST['hooks-post'] ) && '' != $_POST['hook'] ) {
-			$options = get_option( 'pl_hooks_editor', array() );
-
-			if( ! isset( $_POST['action'] ) || '' == $_POST['action'] ) {
-				$id = time();
-				$hook = $_POST['hook'];
-			} else {
-				$id = $_POST['hook'];
-				$hook = $_POST['action'];
-			}
 
 
-			$options[$id]['hook'] = $hook;
-			$options[$id]['content'] = stripslashes( $_POST['content'] );
 
-			if( isset( $_POST['php'] ) )
-				$options[$id]['php'] = true;
-			else
-				$options[$id]['php'] = false;
-
-			$options[$id]['error'] = false;
-
-			if( isset( $_POST['priority'] ) )
-				$options[$id]['priority'] = $_POST['priority'];
-
-			if( isset( $_POST['enabled'] ) )
-				$options[$id]['enabled'] = $_POST['enabled'];
-			else
-				$options[$id]['enabled'] = 'off';
-
-			if( isset( $_POST['page_id'] ) )
-				$options[$id]['page_id'] = explode( ',', $_POST['page_id'] );
-		update_option( 'pl_hooks_editor', $options );
-		}
-	}
-
-	function get_admin_page() {
-
-		$args = array(
-			'title'			=> __( 'Hook Editor', 'hooker' ),
-			'show_save'		=> false,
-			'show_reset'	=> false,
-			'callback'		=> array( &$this, 'setup_admin_page' ),
-		);
-		$optionUI = new PageLinesOptionsUI($args);
-	}
-
-	function setup_admin_page() {
-
-		return array(
-			'hook_editor' => array(
-				'icon'		=> PL_ADMIN_ICONS.'/extend-sections.png',
-				'htabs' 	=> array(
-					'Settings'	=> array(
-					'title'		=> '',
-					'callback'	=> $this->render_admin_page()
-						)
-					)
-				),
-			'import/export'	=> array(
-				'icon'		=> PL_ADMIN_ICONS.'/extend-sections.png',
-				'htabs' 	=> array(
-					'Settings'	=> array(
-					'title'		=> '',
-					'callback'	=> $this->import_page()
-						)
-					)
-				)
-			);
-	}
-
-	function render_admin_page() {
-
-		ob_start();
-		$wp_hooks = $this->wp_hooks();
-
-		// draw dropdown....
-		global $options;
-		$options = get_option( 'pl_hooks_editor', array() );
-		echo'<p><select id="hooks" name="hooks">';
-		printf( "<option name='none' id='none' value='none'>%s</option>", __( 'Add a new hook...', 'hooker' ) );
-		printf( '<option disabled="disabled">%s</option>', __( 'WordPress Hooks', 'hooker' ) );
-		foreach ( $wp_hooks as $k => $hook ) {
-			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
-		}
-		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Hooks', 'hooker' ) );
-
-		$hooks = json_decode( $this->get_pl_hooks() );
-		
-		sort( $hooks );
-
-		foreach ( $hooks as $o => $hook ) {
-
-			if( ! preg_match( '#[a-z]$#', $hook ) )
-				continue;
-
-			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
-		}
-		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Sections', 'hooker' ) );
-		$sections = $this->get_section_hooks();
-		foreach ( $sections as $o => $hook ) {
-
-			if( ! preg_match( '#[a-z]$#', $hook ) )
-				continue;
-
-			echo "<option name='{$hook}' id='hook-{$hook}' value='{$hook}'>{$hook}</option>";
-		}
-		echo '</select></p>';
-		if( ! empty( $options ) ) {
-			foreach ( $options as $o => $hook ) {
-				if( empty( $hook['content'] ) )
-					unset( $options[$o]);
-			}
-		}
-		if( ! empty( $options ) ) {
-			echo'<p><select id="hooks_active" name="hooks_active">';
-			printf( "<option name='none' id='none' value='none'>%s</option>", __( 'Edit hook...', 'hooker' ) );
-
-			foreach ( $options as $o => $hook ) {
-				$error = '';
-				if( isset( $hook['error'] ) && '' != $hook['error'] )
-					$error = sprintf( '[! %s !] ', __( 'Error', 'hooker' ) );
-
-				if( isset( $hook['content'] ) && '' != $hook['content'] )
-					echo "<option name='{$o}' id='hook-{$o}' value='{$o}'>{$error}{$hook['hook']}</option>";
-			}
-		echo '</select></p>';
-	}
-	$this->draw_options();
-	$out = ob_get_clean();
-	return $out;
-	}
 
 
 	function get_pl_hooks() {
@@ -320,172 +459,7 @@ class PLHooks {
 		return $sections;
 	}
 
-	function draw_options() {
 
-		$defaults = array(
-			'content'	=> '',
-			'php'		=> false,
-			'priority'	=> '10',
-			'error'		=> false,
-			'page_id'	=> array(),
-			'enabled'	=> 'on',
-		);
-
-		global $options;
-
-		$wp_hooks = $this->wp_hooks();
-		$hooks = $this->get_pl_hooks();
-		$sections = $this->get_section_hooks();
-
-		foreach( array_merge( $wp_hooks, json_decode( $hooks ), $sections ) as $k => $hook ) {
-
-			if ( ! isset( $options[ $hook ] ) )
-				$options[ $hook ] = $defaults;
-		}
-
-		// draw option boxes....
-
-		foreach( $options as $o => $d ) {
-
-			$d = wp_parse_args( $d, $defaults );
-
-			echo '</form><form action="" method="post">';
-			echo "<div id='hook_{$o}' class='hook_hide'><textarea id='{$o}' name='content'>{$d['content']}</textarea>";
-			echo "<input type='hidden' name='hook' value='{$o}' />";
-
-			if( isset( $d['enabled'] ) && 'on' === $d['enabled'] )
-				$check = 'checked';
-			else
-				$check = 'unchecked';
-			printf( "<br /><input type='checkbox' name='enabled' %s /> %s", $check, __( 'Enable this hook.', 'hooker' ) );
-
-			if ( defined( 'PL_HOOKS_PHP' ) ) {
-
-				if( isset( $d['error'] ) && false != $d['error'] )
-					printf( "<p><span style='color:red' >%s</span><br >%s <strong>%s</strong></p>",
-					__( 'This hook generated a PHP Fatal Error the last time it was executed.', 'hooker' ),
-					__( 'The error reported was:', 'hooker' ),
-					$d['error']
-					);
-
-				if( isset( $d['php'] ) && true === $d['php'] )
-					$check = 'checked';
-				else
-					$check = 'unchecked';
-				printf( "<br /><input type='checkbox' name='php' %s /> %s.",
-					$check,
-					__( 'Enable PHP for this hook', 'hooker' )
-					);
-			}
-			printf( "<br /><input  name='priority' value='{$d['priority']}' /> %s", __( 'Priority. (default is 10)', 'hooker' ) );
-			printf( '<br /><input name="page_id" value="%s" /> %s.',
-				implode( ',', $d['page_id'] ),
-				__( 'Only show on these pages/posts (coma seperated list of IDs)', 'hooker' )
-				);
-			printf( '<p><input type="submit" name="hooks-post" value="%s" class="button-primary" />', __( 'Save Hook', 'hooker' ) );
-
-			if( '' != $d['content'] ) {
-
-				$h = str_replace( '-', '_', $d['hook'] );
-				printf( "<input type='submit' name='hooks-delete' value='%s' class='button-primary' onClick='return ConfirmRestore();'/>", __( 'Delete Hook', 'hooker' ) );
-				pl_action_confirm( 'ConfirmRestore', "Are you sure??\n\nThis will delete this hook.\n\nDont be complaining after you have deleted it!!" );
-			}
-			if ( isset( $d['hook'] ) )
-				echo "<input type='hidden' name='action' value='{$d['hook']}' />";
-		echo '</p></div>';
-		}
-
-			?>
-
-			<div class="hook_welcome" >
-				<h2>Hook Editor instructions</h2>
-				<p>
-					Select the action/hook you want to edit from the dropdown above.<br />
-					Add your HTML/JS/CSS to the textarea.<br />
-					Change the priority of the hook.<br />
-					Click save.<br />
-					Thats it!!<br />
-				</p>
-
-<?php if( defined( 'PL_HOOKS_PHP' ) && PL_HOOKS_PHP ) {
-
-	?>
-	<h3>Additional instructions for PHP users.</h3>
-	<p>
-		You will have an extra checkbox to enable PHP execution for the hook.<br />
-		<strong>IMPORTANT</strong> Make sure your PHP code is properly surrounded by tags.<br />
-		It MUST start and end with PHP tags or errors will occur. Heres an example:<br />
-&lt;?php<br />
-&nbsp;&nbsp;&nbsp;&nbsp;echo 'hello';<br />
-?&gt;
-
-<?php }
-
-echo '</div></form>';
-
-	}
-
-	function import_page() {
-
-		ob_start();
-
-		if( isset( $_GET['imported'] ) && 'true' == $_GET['imported'] )
-			echo '<div><p>Import was successfull!!</p></div>';
-
-		echo '</form><form enctype="multipart/form-data" action="" method="post">';
-
-		echo '<div><p>';
-
-				printf( "<input type='submit' name='export-hooks' value='Export Hooks' class='button-primary' /> %s.</form>", __( 'Export your hooks to a file', 'hooker' ) );
-
-				echo "<form enctype='multipart/form-data' action='' method='post'><input type='submit' name='import-hooks' value='Import Hooks' class='button-primary' onClick='return ConfirmImport();' />";
-				echo '<input type="file" class="file_uploader text_input" name="file" id="hooks-file" />';
-
-				pl_action_confirm( 'ConfirmImport', "Are you sure??\n\nThis will import hooks from a file, and overwrite any existing hooks." );
-
-		echo '</p></div></form>';
-
-		return ob_get_clean();
-	}
-
-	function head() {
-
-		// JS
-		$page = get_current_screen();
-		if ( 'pagelines_page_pagelines_hooks' == $page->id ) :
-?>
-<script type="text/javascript">
-jQuery(document).ready(function() {
-<?php
-		global $options;
-		$options = get_option( 'pl_hooks_editor', array() );
-		if( ! empty( $options ) ) {
-			foreach( $options as $hook => $data ) {
-				if( isset( $data['content']) && '' != $data['content'] )
-					echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'), cm_customcss)\n";
-			}
-		} ?>
-});
-</script>
-<script type="text/javascript">
-	jQuery(document).ready(function() {
-		jQuery('.hook_welcome').show()
-		jQuery('.hook_hide').hide()
-		jQuery('#hooks').change(function() {
-			jQuery('.hook_hide').hide()
-			jQuery('.hook_welcome').hide()
-			jQuery('#hook_' + jQuery(this).val()).show()
-		});
-		jQuery('#hooks_active').change(function() {
-			jQuery('.hook_hide').hide()
-			jQuery('.hook_welcome').hide()
-			jQuery('#hook_' + jQuery(this).val()).show()
-		});
-	});
-</script>
-<?php
-	endif;
-	}
 
 	function wp_hooks() {
 
