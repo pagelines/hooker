@@ -442,8 +442,12 @@ class PLHooks {
 
 	function get_section_hooks() {
 
-		global $load_sections;
-		$available = $load_sections->pagelines_register_sections( false, true );
+		global $load_sections, $editorsections;
+
+		if( method_exists( $editorsections, 'get_sections' ) )
+			$available = $editorsections->get_sections();
+		else
+			$available = $load_sections->pagelines_register_sections( false, true );
 
 		$sections = array();
 		foreach( $available as $type ) {
