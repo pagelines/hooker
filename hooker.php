@@ -242,7 +242,9 @@ class PLHooks {
 			if( ! empty( $options ) ) {
 				foreach( $options as $hook => $data ) {
 					if( isset( $data['content']) && '' != $data['content'] )
-						echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'), {mode: 'text/html'})\n";
+						echo "var myCodeMirror_{$hook} = CodeMirror.fromTextArea(document.getElementById('{$hook}'), {\n
+							lineNumbers: true\n
+							})\n";
 				}
 			} ?>
 	});
