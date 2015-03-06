@@ -33,13 +33,13 @@ class PLHooks {
 		$hooks_export = pagelines_insert_menu( PL_MAIN_DASH, 'Hooks Import', 'edit_theme_options', 'pagelines_hooks_export', array( $this, 'import_page' ) );
 
 		add_action( 'admin_init', array( $this, 'save_settings' ) );
-		add_action( "admin_enqueue_scripts", array( $this, 'css_js' ) );
+		add_action( "load-$hooks_menu", array( $this, 'css_js' ) );
 		add_action( "admin_head-$hooks_menu", array( $this, 'head' ), 999 );
 	}
 
 	function css_js() {
-		wp_enqueue_style( 'test', plugins_url( 'codemirror.css' , __FILE__ ) );
-		wp_enqueue_script( 'test', plugins_url( 'codemirror.js' , __FILE__ ));
+		wp_enqueue_style( 'codemirror-css', plugins_url( 'codemirror/codemirror.css' , __FILE__ ) );
+		wp_enqueue_script( 'codemirror-js', plugins_url( 'codemirror/codemirror.js' , __FILE__ ));
 	}
 
 	function render_admin_page() {
@@ -59,7 +59,7 @@ class PLHooks {
 		printf( '<option disabled="disabled">%s</option>', __( 'PageLines Hooks', 'hooker' ) );
 
 		$hooks = json_decode( $this->get_pl_hooks() );
-		
+
 		sort( $hooks );
 
 		foreach ( $hooks as $o => $hook ) {
