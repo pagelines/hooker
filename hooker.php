@@ -2,7 +2,7 @@
 /*
 Plugin Name: Hooker
 Description: Easily add any code anywhere using all the built in hooks with a simple gui.
-Version: 1.5
+Version: 1.5.1
 Author: Simon Prosser
 Demo:
 Author URI: http://pross.org.uk
