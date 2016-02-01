@@ -120,7 +120,7 @@ class PLHooks {
 			$hooks = $this->get_pl_hooks();
 			$sections = $this->get_section_hooks();
 
-			foreach( array_merge( $wp_hooks, json_decode( $hooks ), $sections ) as $k => $hook ) {
+			foreach( array_merge( $wp_hooks, (array) json_decode( $hooks ), $sections ) as $k => $hook ) {
 
 				if ( ! isset( $options[ $hook ] ) )
 					$options[ $hook ] = $defaults;
